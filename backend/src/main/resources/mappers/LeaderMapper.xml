@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.presidenttracker.mapper.LeaderMapper">
+
+    <resultMap id="LeaderResultMap" type="com.example.presidenttracker.model.Leader">
+        <id property="id" column="id" />
+        <result property="name" column="name" />
+        <result property="country" column="country" />
+        <result property="position" column="position" />
+    </resultMap>
+
+    <select id="findAll" resultMap="LeaderResultMap">
+        SELECT * FROM leaders
+    </select>
+
+    <select id="findById" resultMap="LeaderResultMap">
+        SELECT * FROM leaders WHERE id = #{id}
+    </select>
+    
+    <select id="findByName" resultMap="LeaderResultMap">
+        SELECT * FROM leaders WHERE name = #{name}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO leaders (name, country, position)
+        VALUES (#{name}, #{country}, #{position})
+    </insert>
+
+    <update id="update">
+        UPDATE leaders
+        SET name = #{name},
+            country = #{country},
+            position = #{position}
+        WHERE id = #{id}
+    </update>
+
+</mapper>

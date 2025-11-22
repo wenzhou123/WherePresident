@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.example.presidenttracker.mapper.ItineraryMapper">
+
+    <resultMap id="ItineraryResultMap" type="com.example.presidenttracker.model.Itinerary">
+        <id property="id" column="id" />
+        <result property="leaderId" column="leader_id" />
+        <result property="startLocation" column="start_location" />
+        <result property="endLocation" column="end_location" />
+        <result property="startDate" column="start_date" />
+        <result property="endDate" column="end_date" />
+        <result property="description" column="description" />
+        <result property="startLat" column="start_lat" />
+        <result property="startLng" column="start_lng" />
+        <result property="endLat" column="end_lat" />
+        <result property="endLng" column="end_lng" />
+        <association property="leader" javaType="com.example.presidenttracker.model.Leader" column="leader_id" select="com.example.presidenttracker.mapper.LeaderMapper.findById"/>
+    </resultMap>
+
+    <select id="findAll" resultMap="ItineraryResultMap">
+        SELECT * FROM itineraries
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO itineraries (leader_id, start_location, end_location, start_date, end_date, description, start_lat, start_lng, end_lat, end_lng)
+        VALUES (#{leaderId}, #{startLocation}, #{endLocation}, #{startDate}, #{endDate}, #{description}, #{startLat}, #{startLng}, #{endLat}, #{endLng})
+    </insert>
+
+    <update id="update">
+        UPDATE itineraries
+        SET start_location = #{startLocation},
+            end_location = #{endLocation},
+            start_date = #{startDate},
+            end_date = #{endDate},
+            description = #{description},
+            start_lat = #{startLat},
+            start_lng = #{startLng},
+            end_lat = #{endLat},
+            end_lng = #{endLng}
+        WHERE id = #{id}
+    </update>
+
+    <select id="findByLeaderId" resultMap="ItineraryResultMap">
+        SELECT * FROM itineraries WHERE leader_id = #{leaderId}
+    </select>
+
+</mapper>
