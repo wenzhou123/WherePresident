@@ -57,7 +57,7 @@ onMounted(async () => {
                   showNotification(`Updating leader info for ${countryName}...`, 'info')
                   
                   try {
-                      await axios.post('http://localhost:8080/api/itineraries/update', { country: countryName })
+                      await axios.post('/api/itineraries/update', { country: countryName })
                       showNotification(`Updated info for ${countryName}!`, 'success')
                       fetchItineraries()
                   } catch (err) {
@@ -74,7 +74,7 @@ onMounted(async () => {
   // Fetch Data Function
   const fetchItineraries = async () => {
       try {
-        const response = await axios.get('http://localhost:8080/api/itineraries')
+        const response = await axios.get('/api/itineraries')
         itineraries.value = response.data
         
         // Clear existing itinerary layers
