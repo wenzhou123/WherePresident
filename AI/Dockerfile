@@ -12,9 +12,10 @@ RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debia
 COPY langchain/requirements.txt langchain/requirements.txt
 COPY langserver/requirements.txt langserver/requirements.txt
 
-# Install dependencies
-RUN pip install --no-cache-dir -r langchain/requirements.txt
-RUN pip install --no-cache-dir -r langserver/requirements.txt
+# Install dependencies using Tsinghua PyPI mirror
+ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+RUN pip install --no-cache-dir -i $PIP_INDEX_URL -r langchain/requirements.txt
+RUN pip install --no-cache-dir -i $PIP_INDEX_URL -r langserver/requirements.txt
 
 # Copy source code
 COPY langchain ./langchain
