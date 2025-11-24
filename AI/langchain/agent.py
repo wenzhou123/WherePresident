@@ -1,5 +1,6 @@
 import os
 import json
+from datetime import datetime
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import PromptTemplate
 from langchain_core.messages import HumanMessage
@@ -9,8 +10,10 @@ load_dotenv()
 
 # Configure DeepSeek via OpenAI compatible interface
 # NOTE: User needs to provide DEEPSEEK_API_KEY in .env or environment
-DEEPSEEK_API_KEY = "sk-1c3a9753de224c9f89c2e4562ec78ca1"
-DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+if not DEEPSEEK_API_KEY:
+    raise ValueError("DEEPSEEK_API_KEY environment variable is not set")
+DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 
 llm = ChatOpenAI(
     model="deepseek-chat",
@@ -25,14 +28,20 @@ def get_leader_info(country: str):
     Returns a JSON object with the details.
     """
     prompt = f"""
+    You are a real-time intelligence agent tracking world leaders.
+    The current date is {datetime.now().strftime("%Y-%m-%d")}.
+    
     Who is the current leader of {country}? 
-    Where are they right now?
+    Where are they right now (today/this week)?
+    
+    Search for their LATEST schedule, visits, or official location as of {datetime.now().strftime("%B %Y")}.
+    If they are not on a foreign trip, assume they are at their official residence/capital.
     
     Please return the response in strict JSON format with the following fields:
     - leader_name: Name of the leader
     - position: Title/Position (e.g., President, Prime Minister)
     - current_location: City or specific place they are currently in
-    - description: Brief description of what they are doing there (e.g., "Attending G20 Summit")
+    - description: Brief description of what they are doing there (e.g., "Attending G20 Summit", "Official visit to X", "At official residence")
     - start_date: Estimated start date of this visit (YYYY-MM-DD HH:mm:ss), use current time if unknown
     - end_date: Estimated end date of this visit (YYYY-MM-DD HH:mm:ss), use 2 hours from now if unknown
     - latitude: Estimated latitude of the location (float)

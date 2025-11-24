@@ -18,7 +18,8 @@ public class AIService {
     private static final Logger logger = LoggerFactory.getLogger(AIService.class);
     private final RestTemplate restTemplate;
     private final ItineraryService itineraryService;
-    private final String LANGSERVER_URL = "http://localhost:8000/api/track-leader";
+    @org.springframework.beans.factory.annotation.Value("${ai.service.url:http://localhost:8000/api/track-leader}")
+    private String langServerUrl;
 
     public AIService(ItineraryService itineraryService) {
         this.restTemplate = new RestTemplate();
@@ -31,8 +32,8 @@ public class AIService {
         request.put("country", country);
 
         try {
-            logger.info("Sending request to LangServer: {}", LANGSERVER_URL);
-            LeaderUpdateDto response = restTemplate.postForObject(LANGSERVER_URL, request, LeaderUpdateDto.class);
+            logger.info("Sending request to LangServer: {}", langServerUrl);
+            LeaderUpdateDto response = restTemplate.postForObject(langServerUrl, request, LeaderUpdateDto.class);
 
             if (response != null) {
                 logger.info("Received response from LangServer: {}", response);
