@@ -1,12 +1,11 @@
 <script setup>
-import { onMounted, ref } from 'vue'
-import L from 'leaflet'
+import { onMounted, ref, onBeforeUnmount } from 'vue'
+import * as echarts from 'echarts'
 import axios from 'axios'
 
 const mapContainer = ref(null)
-const itineraries = ref([])
-const selectedItinerary = ref(null)
 const notification = ref(null)
+let chartInstance = null
 
 const showNotification = (message, type = 'info') => {
     notification.value = { message, type }
@@ -16,132 +15,239 @@ const showNotification = (message, type = 'info') => {
 }
 
 onMounted(async () => {
-  // Initialize Map with Dark Theme
-  const map = L.map(mapContainer.value, {
-      zoomControl: false,
-      attributionControl: false
-  }).setView([20, 0], 3)
+  // Initialize ECharts instance
+  chartInstance = echarts.init(mapContainer.value)
 
-  // Dark Matter Tiles
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: 'abcd',
-    maxZoom: 20
-  }).addTo(map)
+  // Show loading state
+  chartInstance.showLoading({
+    maskColor: 'rgba(30, 30, 30, 0.8)',
+    textColor: '#fff'
+  })
 
-  // Layer Group for Itineraries
-  const itineraryLayerGroup = L.layerGroup().addTo(map)
-
-  // Load World GeoJSON
   try {
+      // Load World GeoJSON
       const geoResponse = await axios.get('https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json')
-      L.geoJSON(geoResponse.data, {
-          style: {
-              color: '#4a90e2',
-              weight: 1,
-              opacity: 0.3,
-              fillOpacity: 0.05,
-              fillColor: '#4a90e2'
-          },
-          onEachFeature: (feature, layer) => {
-              // Hover effects
-              layer.on('mouseover', () => {
-                  layer.setStyle({ fillOpacity: 0.3, weight: 2, color: '#6ab0ff' })
-              })
-              layer.on('mouseout', () => {
-                  layer.setStyle({ fillOpacity: 0.05, weight: 1, color: '#4a90e2' })
-              })
+      echarts.registerMap('world', geoResponse.data)
+      
+      chartInstance.hideLoading()
 
-              layer.on('click', async () => {
-                  const countryName = feature.properties.name
-                  showNotification(`Updating leader info for ${countryName}...`, 'info')
-                  
-                  try {
-                      await axios.post('/api/itineraries/update', { country: countryName })
-                      showNotification(`Updated info for ${countryName}!`, 'success')
-                      fetchItineraries()
-                  } catch (err) {
-                      console.error(err)
-                      showNotification(`Failed to update info for ${countryName}`, 'error')
+      // Initial Option
+      const option = {
+          backgroundColor: '#1e1e1e',
+          title: {
+              text: 'Global Leader Itineraries',
+              left: 'center',
+              textStyle: {
+                  color: '#fff'
+              }
+          },
+          tooltip: {
+              trigger: 'item',
+              backgroundColor: 'rgba(30, 30, 30, 0.9)',
+              borderColor: '#777',
+              textStyle: {
+                  color: '#fff'
+              },
+              formatter: function (params) {
+                  if (params.seriesType === 'lines') {
+                      const data = params.data;
+                      return `
+                          <div style="padding: 5px;">
+                              <h3 style="color: #2ed573; margin: 0 0 5px 0;">${data.leaderName}</h3>
+                              <div style="color: #a4b0be; font-size: 12px; margin-bottom: 5px;">${data.leaderCountry}</div>
+                              <div>${data.fromName} -> ${data.toName}</div>
+                              <div style="margin-top: 5px; font-size: 12px; color: #ccc;">${data.description}</div>
+                          </div>
+                      `;
+                  } else if (params.seriesType === 'effectScatter') {
+                      return `${params.data.name}`;
+                  } else {
+                      return params.name;
                   }
-              })
+              }
+          },
+          geo: {
+              map: 'world',
+              roam: true,
+              label: {
+                  emphasis: {
+                      show: false
+                  }
+              },
+              itemStyle: {
+                  normal: {
+                      areaColor: '#323c48',
+                      borderColor: '#111'
+                  },
+                  emphasis: {
+                      areaColor: '#2a333d'
+                  }
+              }
+          },
+          series: []
+      };
+
+      chartInstance.setOption(option);
+
+      // Handle Click on Country
+      chartInstance.on('click', async (params) => {
+          if (params.componentType === 'geo' || params.seriesType === 'map') {
+              const countryName = params.name
+              showNotification(`Updating leader info for ${countryName}...`, 'info')
+              
+              try {
+                  await axios.post('/api/itineraries/update', { country: countryName })
+                  showNotification(`Updated info for ${countryName}!`, 'success')
+                  fetchItineraries()
+              } catch (err) {
+                  console.error(err)
+                  showNotification(`Failed to update info for ${countryName}`, 'error')
+              }
           }
-      }).addTo(map)
+      });
+
+      // Fetch Data
+      fetchItineraries()
+
   } catch (e) {
-      console.error("Failed to load GeoJSON", e)
+      console.error("Failed to load GeoJSON or init map", e)
+      chartInstance.hideLoading()
   }
 
-  // Fetch Data Function
-  const fetchItineraries = async () => {
-      try {
+  // Handle Resize
+  window.addEventListener('resize', handleResize)
+})
+
+onBeforeUnmount(() => {
+    window.removeEventListener('resize', handleResize)
+    if (chartInstance) {
+        chartInstance.dispose()
+    }
+})
+
+const handleResize = () => {
+    if (chartInstance) {
+        chartInstance.resize()
+    }
+}
+
+const fetchItineraries = async () => {
+    try {
         const response = await axios.get('/api/itineraries')
-        itineraries.value = response.data
+        const itineraries = response.data
         
-        // Clear existing itinerary layers
-        itineraryLayerGroup.clearLayers()
+        const linesData = []
+        const scatterData = []
 
-        itineraries.value.forEach(itinerary => {
+        itineraries.forEach(itinerary => {
             if (itinerary.startLat && itinerary.startLng && itinerary.endLat && itinerary.endLng) {
-                const start = [itinerary.startLat, itinerary.startLng]
-                const end = [itinerary.endLat, itinerary.endLng]
+                const startPoint = [itinerary.startLng, itinerary.startLat];
+                const endPoint = [itinerary.endLng, itinerary.endLat];
                 
-                // Draw Line with Animation Class
-                const polyline = L.polyline([start, end], { 
-                    color: '#ff4757', 
-                    weight: 3, 
-                    opacity: 0.8,
-                    className: 'animated-line' 
-                }).addTo(itineraryLayerGroup)
-                
-                // Custom Icon
-                const createCustomIcon = (color) => L.divIcon({
-                    className: 'custom-div-icon',
-                    html: `<div style="background-color: ${color}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 8px ${color};"></div>`,
-                    iconSize: [12, 12],
-                    iconAnchor: [6, 6]
-                })
+                // Line Data
+                linesData.push({
+                    coords: [startPoint, endPoint],
+                    fromName: itinerary.startLocation,
+                    toName: itinerary.endLocation,
+                    leaderName: itinerary.leader.name,
+                    leaderCountry: itinerary.leader.country,
+                    description: itinerary.description,
+                    lineStyle: {
+                        color: '#ff4757'
+                    }
+                });
 
-                // Add Markers with Custom Icons
-                L.marker(start, { icon: createCustomIcon('#2ed573') }).addTo(itineraryLayerGroup).bindPopup(`Start: ${itinerary.startLocation}`)
-                L.marker(end, { icon: createCustomIcon('#ff4757') }).addTo(itineraryLayerGroup).bindPopup(`End: ${itinerary.endLocation}`)
-                
-                // Hover Event (Mouseover)
-                polyline.on('mouseover', (e) => {
-                    selectedItinerary.value = itinerary
-                    L.popup({ className: 'dark-popup', closeButton: false })
-                        .setLatLng(e.latlng)
-                        .setContent(`
-                            <div class="popup-content">
-                                <h3>${itinerary.leader.name}</h3>
-                                <div class="subtitle">${itinerary.leader.country}</div>
-                                <div class="detail-row">
-                                    <span class="label">Route:</span>
-                                    <span>${itinerary.startLocation} → ${itinerary.endLocation}</span>
-                                </div>
-                                <div class="detail-row">
-                                    <span class="label">Date:</span>
-                                    <span>${new Date(itinerary.startDate).toLocaleDateString()} - ${new Date(itinerary.endDate).toLocaleDateString()}</span>
-                                </div>
-                                <div class="description">${itinerary.description}</div>
-                            </div>
-                        `)
-                        .openOn(map)
-                })
-
-                // Optional: Close on mouseout, or keep until another is hovered
-                // polyline.on('mouseout', () => {
-                //    map.closePopup()
-                // })
+                // Scatter Data (Start and End)
+                scatterData.push({
+                    name: itinerary.startLocation,
+                    value: startPoint.concat(10), // value includes lat, lng, and size/value
+                    itemStyle: { color: '#2ed573' }
+                });
+                scatterData.push({
+                    name: itinerary.endLocation,
+                    value: endPoint.concat(10),
+                    itemStyle: { color: '#ff4757' }
+                });
             }
         })
-      } catch (error) {
-        console.error("Failed to fetch itineraries", error)
-      }
-  }
 
-  // Initial Fetch
-  fetchItineraries()
-})
+        chartInstance.setOption({
+            series: [
+                {
+                    name: 'Routes',
+                    type: 'lines',
+                    zlevel: 1,
+                    effect: {
+                        show: true,
+                        period: 6,
+                        trailLength: 0.7,
+                        color: '#fff',
+                        symbolSize: 3
+                    },
+                    lineStyle: {
+                        normal: {
+                            color: '#a6c84c',
+                            width: 0,
+                            curveness: 0.2
+                        }
+                    },
+                    data: linesData
+                },
+                {
+                    name: 'Routes Line',
+                    type: 'lines',
+                    zlevel: 2,
+                    symbol: ['none', 'arrow'],
+                    symbolSize: 10,
+                    effect: {
+                        show: true,
+                        period: 6,
+                        trailLength: 0,
+                        symbol: 'plane',
+                        symbolSize: 15
+                    },
+                    lineStyle: {
+                        normal: {
+                            color: '#a6c84c',
+                            width: 1,
+                            opacity: 0.6,
+                            curveness: 0.2
+                        }
+                    },
+                    data: linesData
+                },
+                {
+                    name: 'Locations',
+                    type: 'effectScatter',
+                    coordinateSystem: 'geo',
+                    zlevel: 2,
+                    rippleEffect: {
+                        brushType: 'stroke'
+                    },
+                    label: {
+                        normal: {
+                            show: true,
+                            position: 'right',
+                            formatter: '{b}'
+                        }
+                    },
+                    symbolSize: function (val) {
+                        return val[2] / 2; // Dynamic size based on value
+                    },
+                    itemStyle: {
+                        normal: {
+                            color: '#f4e925'
+                        }
+                    },
+                    data: scatterData
+                }
+            ]
+        })
+
+    } catch (error) {
+        console.error("Failed to fetch itineraries", error)
+    }
+}
 </script>
 
 <template>
@@ -151,15 +257,6 @@ onMounted(async () => {
     <!-- Notification Toast -->
     <div v-if="notification" :class="['notification', notification.type]">
         {{ notification.message }}
-    </div>
-
-    <!-- Info Panel (Optional, can be removed if popup is enough, but keeping for now) -->
-    <div v-if="selectedItinerary" class="info-panel">
-        <h2>Trip Details</h2>
-        <p><strong>Leader:</strong> {{ selectedItinerary.leader.name }}</p>
-        <p><strong>Country:</strong> {{ selectedItinerary.leader.country }}</p>
-        <p><strong>Route:</strong> {{ selectedItinerary.startLocation }} -> {{ selectedItinerary.endLocation }}</p>
-        <p><strong>Description:</strong> {{ selectedItinerary.description }}</p>
     </div>
   </div>
 </template>
@@ -176,8 +273,6 @@ onMounted(async () => {
 .map-container {
     height: 100%;
     width: 100%;
-    z-index: 1;
-    background-color: #1e1e1e;
 }
 
 /* Notification Toast */
@@ -201,87 +296,5 @@ onMounted(async () => {
 @keyframes slideDown {
     from { top: -50px; opacity: 0; }
     to { top: 20px; opacity: 1; }
-}
-
-.info-panel {
-    position: absolute;
-    bottom: 30px;
-    left: 30px;
-    background: rgba(30, 30, 30, 0.9);
-    color: #f1f2f6;
-    padding: 20px;
-    border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-    z-index: 1000;
-    max-width: 320px;
-    backdrop-filter: blur(10px);
-    border: 1px solid rgba(255,255,255,0.1);
-}
-.info-panel h2 {
-    margin-top: 0;
-    color: #2ed573;
-    font-size: 1.2rem;
-    margin-bottom: 15px;
-}
-.info-panel p {
-    margin: 8px 0;
-    font-size: 0.9rem;
-    line-height: 1.4;
-}
-</style>
-
-<style>
-/* Global overrides for Leaflet in Dark Mode */
-.leaflet-popup-content-wrapper, .leaflet-popup-tip {
-    background: rgba(30, 30, 30, 0.95);
-    color: #f1f2f6;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-}
-.leaflet-popup-content {
-    margin: 15px;
-}
-.popup-content h3 {
-    margin: 0 0 5px 0;
-    color: #2ed573;
-}
-.popup-content .subtitle {
-    color: #a4b0be;
-    font-size: 0.9rem;
-    margin-bottom: 10px;
-}
-.popup-content .detail-row {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 5px;
-    font-size: 0.85rem;
-}
-.popup-content .label {
-    font-weight: bold;
-    color: #747d8c;
-    margin-right: 10px;
-}
-.popup-content .description {
-    margin-top: 10px;
-    font-size: 0.85rem;
-    line-height: 1.4;
-    border-top: 1px solid rgba(255,255,255,0.1);
-    padding-top: 10px;
-}
-
-/* Animated Line */
-.animated-line {
-    stroke-dasharray: 10;
-    animation: dash 30s linear infinite;
-}
-
-@keyframes dash {
-    to {
-        stroke-dashoffset: -1000;
-    }
-}
-
-.custom-div-icon {
-    background: transparent;
-    border: none;
 }
 </style>
